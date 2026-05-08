@@ -15,6 +15,9 @@ class BOSSSHOOTING_API ABaseCharacter : public ACharacter
 
 public:
 	ABaseCharacter();
+	
+	
+	
 
 protected:
 	virtual void BeginPlay() override;
@@ -25,8 +28,29 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	TObjectPtr<UCameraComponent> TopDownCamera;
+	// ★ Health — 서버 권위, 변경 시 OnRep_Health 콜백
+	UPROPERTY(ReplicatedUsing = OnRep_Health, VisibleAnywhere, BlueprintReadOnly, Category = "Stats")
+	float CurrentHealth;
+
+	// ★ MaxHealth — 디자인 값이라 리플리케이션 불필요 (모든 인스턴스 동일 시작)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats")
+	float MaxHealth;
+
+	// ★ RepNotify 콜백 — 클라에서 값이 도착하면 자동 호출됨
+	UFUNCTION()
+	void OnRep_Health(float OldHealth);
 
 public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+	
+	// ★ 리플리케이션 등록 — 어떤 변수가 네트워크로 동기화될지 선언
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	// ★ 데미지 처리 — Engine 가상 함수 오버라이드 (서버 권위)
+	virtual float TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
+
+	// ★ 디버그 — 콘솔에서 자기 자신에게 데미지
+	UFUNCTION(Exec, BlueprintCallable, Category = "Debug")
+	void DebugSelfDamage(float Amount);
 };
