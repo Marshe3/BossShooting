@@ -7,7 +7,10 @@
 // Forward declarations — 헤더 의존성 최소화
 class USpringArmComponent;
 class UCameraComponent;
-
+// ★ Forward declarations 추가
+class UInputAction;
+class UInputMappingContext;
+struct FInputActionValue;
 UCLASS()
 class BOSSSHOOTING_API ABaseCharacter : public ACharacter
 {
@@ -39,7 +42,23 @@ protected:
 	// ★ RepNotify 콜백 — 클라에서 값이 도착하면 자동 호출됨
 	UFUNCTION()
 	void OnRep_Health(float OldHealth);
+	
+	// Input - BP에서 자산 할당받음
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputMappingContext> DefaultMappingContext;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputAction> MoveAction;
+	
+	void Move(const FInputActionValue& Value);
+	
+	// ★ 매 틱 마우스 추적 회전
+	void UpdateAimRotation();
 
+	// ★ Server RPC — 클라가 서버에 회전 알림 → 서버가 다른 클라에 자동 동기화
+	UFUNCTION(Server, Unreliable)
+	void Server_SetAimRotation(FRotator NewRotation);
+	
 public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
