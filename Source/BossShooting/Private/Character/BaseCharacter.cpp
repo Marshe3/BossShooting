@@ -6,6 +6,7 @@
 #include "Net/UnrealNetwork.h"  // ★ 추가: DOREPLIFETIME 매크로
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "Weapon/BaseWeapon.h"
 
 ABaseCharacter::ABaseCharacter()
 {
@@ -53,6 +54,7 @@ void ABaseCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 
 	// 이 클래스의 리플리케이트 변수를 등록
 	DOREPLIFETIME(ABaseCharacter, CurrentHealth);
+	DOREPLIFETIME(ABaseCharacter, CurrentWeapon);
 }
 
 float ABaseCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
@@ -127,6 +129,20 @@ void ABaseCharacter::BeginPlay()
 			{
 				Subsystem->AddMappingContext(DefaultMappingContext,  0);
 			}
+		}
+	}
+	
+	// 서버에서만 기본 무기 스폰 + 장착
+	if (HasAuthority()&& DefaultWeaponClass)
+	{
+		FActorSpawnParameters Params;
+		Params.Owner = this;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		
+		ABaseWeapon* NewWeapon = GetWorld()->SpawnActor<ABaseWeapon>(DefaultWeaponClass, Params); 
+		if (NewWeapon)
+		{
+			EquipWeapon(NewWeapon);
 		}
 	}
 	
@@ -218,4 +234,31 @@ void ABaseCharacter::Server_SetAimRotation_Implementation(FRotator NewRotation)
 	//   서버 → 다른 클라들에 위치/회전 자동 전파
 	SetActorRotation(NewRotation);
 	
+}
+
+void ABaseCharacter::EquipWeapon(ABaseWeapon* NewWeapon)
+{
+	if (!HasAuthority() || !NewWeapon) return;
+	
+	// 기존 무기 해제
+	if (CurrentWeapon)
+	{
+		CurrentWeapon->DetachFromOwner();
+	}
+	
+	CurrentWeapon = NewWeapon;
+	CurrentWeapon->AttachToOwner(this);
+	
+	OnRep_CurrentWeapon(nullptr); // 서버 수동 호출
+}
+
+void ABaseCharacter::OnRep_CurrentWeapon(ABaseWeapon* OldWeapon)
+{
+	const TCHAR* RoleStr = HasAuthority() ? TEXT("서버") : TEXT("클라");
+	const FString OldName = OldWeapon ? OldWeapon->GetName() : TEXT("None");
+	const FString NewName = CurrentWeapon ? CurrentWeapon->GetName() : TEXT("None");
+
+	UE_LOG(LogTemp, Warning, TEXT("[%s] %s 무기 변경: %s -> %s"),
+		RoleStr, *GetName(), *OldName, *NewName);
+	// 추후 HUD 무기 슬롯 갱신
 }

@@ -4,6 +4,8 @@
 #include "GameFramework/Character.h"
 #include "BaseCharacter.generated.h"
 
+class ABaseWeapon; // Forward declaration 추가
+
 // Forward declarations — 헤더 의존성 최소화
 class USpringArmComponent;
 class UCameraComponent;
@@ -16,12 +18,25 @@ class BOSSSHOOTING_API ABaseCharacter : public ACharacter
 {
 	GENERATED_BODY()
 
+
+	
 public:
 	ABaseCharacter();
 	
+	// 시작 시 자동 장착할 무기 클래스 (BP에서 지정)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
+	TSubclassOf<ABaseWeapon> DefaultWeaponClass;
 	
+	// 현재 장착 중인 무기 - Replicated 포인터
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentWeapon, VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+	TObjectPtr<ABaseWeapon> CurrentWeapon;
 	
-
+	UFUNCTION()
+	void OnRep_CurrentWeapon(ABaseWeapon* OldWeapon);
+	
+	// 무기 장착 (서버에서만 호출)
+	void EquipWeapon(ABaseWeapon* NewWeapon);
+	
 protected:
 	virtual void BeginPlay() override;
 
