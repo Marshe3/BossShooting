@@ -180,23 +180,31 @@ void ABaseCharacter::UpdateAimRotation()
 	APlayerController* PC = Cast<APlayerController>(GetController());
 	if (!PC) return;
 	
-	FHitResult Hit;
-	PC->GetHitResultUnderCursor(ECC_Visibility, false, Hit);
+	// 마우스 화면 좌표 -> 월드 RAY ( 시작 위치 + 방향)
+	FVector WorldLocation, WorldDirection;
+	if (!PC->DeprojectMousePositionToWorld(WorldLocation, WorldDirection)) return;
 	
-	if (!Hit.bBlockingHit) return;
+	// 캐릭터 높이의 수평 평면(Z = 캐릭터 Z)과 ray 교차점 계산
+	const float PlaneZ = GetActorLocation().Z;
 	
-	FVector ToTarget = Hit.ImpactPoint - GetActorLocation();
-	ToTarget.Z = 0.0f; // 수평 평면 회전만 (탑뷰)
+	// ray가 수평이면 (Z 방향 변화 없으면) 교차점 계산 불가
+	if (FMath::IsNearlyZero(WorldDirection.Z)) return;
+	
+	// 매개방정식: WorldLocation.Z + T * WorldDirection.Z = PlaneZ -> T 풀기
+	const float T = (PlaneZ - WorldLocation.Z) / WorldDirection.Z;
+	if (T <= 0.0f) return; // 카메라 뒤쪽이면 무시
+	
+	const FVector AimPoint = WorldLocation + WorldDirection * T;
+	
+	FVector ToTarget = AimPoint - GetActorLocation();
+	ToTarget.Z =0.0f;
 	
 	if (ToTarget.IsNearlyZero()) return;
 	
 	const FRotator NewRotation(0.0f, ToTarget.Rotation().Yaw, 0.0f);
 	
-	// 1) 로컬에서 즉시 회전 (반응성 — 자기 화면에서는 지연 없이)
 	SetActorRotation(NewRotation);
 	
-	// 2) 권위 없으면(= 클라이언트면) 서버에 알림
-	//    서버는 받아서 자기 캐릭터를 회전시키고, bReplicateMovement가 그걸 다른 클라에 자동 동기화
 	if (!HasAuthority())
 	{
 		Server_SetAimRotation(NewRotation);
