@@ -19,6 +19,9 @@ public:
 	// Sets default values for this actor's properties
 	ABaseWeapon();
 	
+	// 발사 입력
+	void StartFire();
+	
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	
 	// 캐릭터가 이 무기를 장착할 때 호출(서버에서)
@@ -60,7 +63,7 @@ protected:
 	// === 런타임 상태 ===
 	
 	// 현재 탄약 - 서버 권위, 클라 UI 동기화
-	UPROPERTY(ReplicatedUsing = OnRep_OwningCharacter, VisibleAnywhere, BlueprintReadOnly, Category = "Weapon|State")
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentAmmo, VisibleAnywhere, BlueprintReadOnly, Category = "Weapon|State")
 	int32 CurrentAmmo;
 	
 	UFUNCTION()
@@ -73,6 +76,19 @@ protected:
 	UFUNCTION()
 	void OnRep_OwningCharacter();
 
+	// Server PRC - 클라가 서버에 발사 요청
+	UFUNCTION(Server, Reliable)
+	void Server_Fire(const FVector& TraceStart, const FVector& TraceEnd);
+	
+	// Multicast RPC - 서버가 전체 클라에 이펙트 전파
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_PlayFireFX(const FVector& TraceStart, const FVector& TraceENd, AActor* HitActor);
+	
+	// 서버에서 실제 히트스캔 + 데미지 처리
+	void PerformLineTrace(const FVector& TraceStart, const FVector& TraceEnd);
+	
+	// 마지막 발사 시각 (쿨다운용, 서버 권위)
+	float LastFireTime = 0.0f;
 	
 	
 public:

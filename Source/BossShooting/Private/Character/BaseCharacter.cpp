@@ -193,91 +193,106 @@ void ABaseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 		{
 			EIC->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ABaseCharacter::Move);
 		}
-	}
+		
+		// ★ 발사 — Started: 키 누른 순간 한 번
+		if (FireAction)
+		{
+			EIC->BindAction(FireAction, ETriggerEvent::Started, this, &ABaseCharacter::OnFirePressed);
+		}
 	
+	}
 }
 
-void ABaseCharacter::Move(const FInputActionValue& Value)
-{
-	const FVector2D MoveInput = Value.Get<FVector2D>();
-	
-	if (Controller && !MoveInput.IsZero())
+	void ABaseCharacter::Move(const FInputActionValue& Value)
 	{
-		// 월드 좌표 기준 이동 (탑뷰라 카메라 회전 신경 안 써도 됨 — 카메라 고정)
-		AddMovementInput(FVector::ForwardVector, MoveInput.Y);
-		AddMovementInput(FVector::RightVector, MoveInput.X);
-	}
+		const FVector2D MoveInput = Value.Get<FVector2D>();
+	
+		if (Controller && !MoveInput.IsZero())
+		{
+			// 월드 좌표 기준 이동 (탑뷰라 카메라 회전 신경 안 써도 됨 — 카메라 고정)
+			AddMovementInput(FVector::ForwardVector, MoveInput.Y);
+			AddMovementInput(FVector::RightVector, MoveInput.X);
+		}
 	 
-}
-
-void ABaseCharacter::UpdateAimRotation()
-{
-	APlayerController* PC = Cast<APlayerController>(GetController());
-	if (!PC) return;
-	
-	// 마우스 화면 좌표 -> 월드 RAY ( 시작 위치 + 방향)
-	FVector WorldLocation, WorldDirection;
-	if (!PC->DeprojectMousePositionToWorld(WorldLocation, WorldDirection)) return;
-	
-	// 캐릭터 높이의 수평 평면(Z = 캐릭터 Z)과 ray 교차점 계산
-	const float PlaneZ = GetActorLocation().Z;
-	
-	// ray가 수평이면 (Z 방향 변화 없으면) 교차점 계산 불가
-	if (FMath::IsNearlyZero(WorldDirection.Z)) return;
-	
-	// 매개방정식: WorldLocation.Z + T * WorldDirection.Z = PlaneZ -> T 풀기
-	const float T = (PlaneZ - WorldLocation.Z) / WorldDirection.Z;
-	if (T <= 0.0f) return; // 카메라 뒤쪽이면 무시
-	
-	const FVector AimPoint = WorldLocation + WorldDirection * T;
-	
-	FVector ToTarget = AimPoint - GetActorLocation();
-	ToTarget.Z =0.0f;
-	
-	if (ToTarget.IsNearlyZero()) return;
-	
-	const FRotator NewRotation(0.0f, ToTarget.Rotation().Yaw, 0.0f);
-	
-	SetActorRotation(NewRotation);
-	
-	if (!HasAuthority())
-	{
-		Server_SetAimRotation(NewRotation);
 	}
-}
 
-void ABaseCharacter::Server_SetAimRotation_Implementation(FRotator NewRotation)
-{
-	// 서버 권위 회전 적용
-	// → Character의 bReplicateMovement = true 덕분에
-	//   서버 → 다른 클라들에 위치/회전 자동 전파
-	SetActorRotation(NewRotation);
+	void ABaseCharacter::UpdateAimRotation()
+	{
+		APlayerController* PC = Cast<APlayerController>(GetController());
+		if (!PC) return;
 	
-}
+		// 마우스 화면 좌표 -> 월드 RAY ( 시작 위치 + 방향)
+		FVector WorldLocation, WorldDirection;
+		if (!PC->DeprojectMousePositionToWorld(WorldLocation, WorldDirection)) return;
+	
+		// 캐릭터 높이의 수평 평면(Z = 캐릭터 Z)과 ray 교차점 계산
+		const float PlaneZ = GetActorLocation().Z;
+	
+		// ray가 수평이면 (Z 방향 변화 없으면) 교차점 계산 불가
+		if (FMath::IsNearlyZero(WorldDirection.Z)) return;
+	
+		// 매개방정식: WorldLocation.Z + T * WorldDirection.Z = PlaneZ -> T 풀기
+		const float T = (PlaneZ - WorldLocation.Z) / WorldDirection.Z;
+		if (T <= 0.0f) return; // 카메라 뒤쪽이면 무시
+	
+		const FVector AimPoint = WorldLocation + WorldDirection * T;
+	
+		FVector ToTarget = AimPoint - GetActorLocation();
+		ToTarget.Z =0.0f;
+	
+		if (ToTarget.IsNearlyZero()) return;
+	
+		const FRotator NewRotation(0.0f, ToTarget.Rotation().Yaw, 0.0f);
+	
+		SetActorRotation(NewRotation);
+	
+		if (!HasAuthority())
+		{
+			Server_SetAimRotation(NewRotation);
+		}
+	}
 
-void ABaseCharacter::EquipWeapon(ABaseWeapon* NewWeapon)
-{
-	if (!HasAuthority() || !NewWeapon) return;
+	void ABaseCharacter::Server_SetAimRotation_Implementation(FRotator NewRotation)
+	{
+		// 서버 권위 회전 적용
+		// → Character의 bReplicateMovement = true 덕분에
+		//   서버 → 다른 클라들에 위치/회전 자동 전파
+		SetActorRotation(NewRotation);
 	
-	// 기존 무기 해제
+	}
+
+	void ABaseCharacter::EquipWeapon(ABaseWeapon* NewWeapon)
+	{
+		if (!HasAuthority() || !NewWeapon) return;
+	
+		// 기존 무기 해제
+		if (CurrentWeapon)
+		{
+			CurrentWeapon->DetachFromOwner();
+		}
+	
+		CurrentWeapon = NewWeapon;
+		CurrentWeapon->AttachToOwner(this);
+	
+		OnRep_CurrentWeapon(nullptr); // 서버 수동 호출
+	}
+
+	void ABaseCharacter::OnRep_CurrentWeapon(ABaseWeapon* OldWeapon)
+	{
+		const TCHAR* RoleStr = HasAuthority() ? TEXT("서버") : TEXT("클라");
+		const FString OldName = OldWeapon ? OldWeapon->GetName() : TEXT("None");
+		const FString NewName = CurrentWeapon ? CurrentWeapon->GetName() : TEXT("None");
+
+		UE_LOG(LogTemp, Warning, TEXT("[%s] %s 무기 변경: %s -> %s"),
+			RoleStr, *GetName(), *OldName, *NewName);
+		// 추후 HUD 무기 슬롯 갱신
+	}
+
+void ABaseCharacter::OnFirePressed()
+{
 	if (CurrentWeapon)
 	{
-		CurrentWeapon->DetachFromOwner();
+		CurrentWeapon->StartFire();
 	}
-	
-	CurrentWeapon = NewWeapon;
-	CurrentWeapon->AttachToOwner(this);
-	
-	OnRep_CurrentWeapon(nullptr); // 서버 수동 호출
 }
 
-void ABaseCharacter::OnRep_CurrentWeapon(ABaseWeapon* OldWeapon)
-{
-	const TCHAR* RoleStr = HasAuthority() ? TEXT("서버") : TEXT("클라");
-	const FString OldName = OldWeapon ? OldWeapon->GetName() : TEXT("None");
-	const FString NewName = CurrentWeapon ? CurrentWeapon->GetName() : TEXT("None");
-
-	UE_LOG(LogTemp, Warning, TEXT("[%s] %s 무기 변경: %s -> %s"),
-		RoleStr, *GetName(), *OldName, *NewName);
-	// 추후 HUD 무기 슬롯 갱신
-}

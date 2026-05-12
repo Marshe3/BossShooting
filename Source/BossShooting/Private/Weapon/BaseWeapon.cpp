@@ -6,6 +6,10 @@
 #include "Net/UnrealNetwork.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Character/BaseCharacter.h"
+#include "Engine/DamageEvents.h" //FPointDamageEvent
+#include "DrawDebugHelpers.h" //DrawDebugLine 디버깅용
+#include "EnhancedInputComponent.h"
+
 
 // Sets default values
 ABaseWeapon::ABaseWeapon()
@@ -133,4 +137,91 @@ void ABaseWeapon::DetachFromOwner()
 	DetachFromActor(Rules);
 
 	OnRep_OwningCharacter();
+}
+
+void ABaseWeapon::StartFire()
+{
+	// 소유 캐릭터가 없으면 발사 불가
+	if (!OwningCharacter) return;
+	
+	// 발사 시작점/방향 계산 (캐릭터 위치 + 캐릭터 정면 방향)
+	const FVector TraceStart = OwningCharacter->GetActorLocation();
+	const FVector TraceEnd = TraceStart + OwningCharacter->GetActorForwardVector() * Range;
+	
+	// 서버에 발사 요청
+	Server_Fire(TraceStart, TraceEnd);
+}
+
+void ABaseWeapon::Server_Fire_Implementation(const FVector& TraceStart, const FVector& TraceEnd)
+{
+	// ===권위 검증===
+	
+	// 발사 쿨다운
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
+	if (CurrentTime - LastFireTime < FireRate)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[서버] %s 발사 거부: 쿨다운"), *GetName());
+		return;
+	}
+	
+	if (CurrentAmmo <= 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[서버] %s 발사 거부: 탄약 없음"), *GetName());
+	}
+	
+	// 검증 통과 -> 상태 갱신
+	LastFireTime = CurrentTime;
+	const int32 OldAmmo = CurrentAmmo;
+	CurrentAmmo--;
+	OnRep_CurrentAmmo(OldAmmo); // 서버에서 수동 호출 (RepNotify 패턴)
+	
+	// === 히트스캔 + 데미지 ===
+	PerformLineTrace(TraceStart, TraceEnd);
+}
+
+void ABaseWeapon::PerformLineTrace(const FVector& TraceStart, const FVector& TraceEnd)
+{
+	FHitResult Hit;
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(this); // 무기 자기 자신 무시
+	Params.AddIgnoredActor(OwningCharacter); // 쏘는 사람 무시
+	Params.bTraceComplex = false; // 단순 콜리전만 (성능)
+	
+	const bool bHit = GetWorld() -> LineTraceSingleByChannel(
+		Hit,TraceStart, TraceEnd, ECC_Pawn, Params);
+	
+	AActor* HitActor = nullptr;
+	
+	if (bHit && Hit.GetActor())
+	{
+		HitActor = Hit.GetActor();
+		
+		// 데미지 적용(서버 권위)
+		FPointDamageEvent DmgEvent(Damage, Hit, (TraceEnd - TraceStart).GetSafeNormal(), nullptr);
+		HitActor -> TakeDamage(
+			Damage,
+			DmgEvent,
+			OwningCharacter ? OwningCharacter->GetController() : nullptr, this);
+		
+		UE_LOG(LogTemp, Warning, TEXT("[서버] %s 히트: %s (데미지 %.1f)"),
+			*GetName(), *HitActor->GetName(), Damage);
+	}
+	
+	// === 전체 클라에 이펙트 전파 ===
+	// bHit이면 실제 충돌 위치까지, 아니면 끝점까지 라인 그림
+	const FVector FXEnd = bHit ? Hit.ImpactPoint : TraceEnd;
+	Multicast_PlayFireFX(TraceStart, FXEnd, HitActor);
+}
+
+void ABaseWeapon::Multicast_PlayFireFX_Implementation(const FVector& TraceStart, const FVector& TraceEnd, AActor* HitActor)
+{
+	// 디버그 라인 - 5초간 보임
+	DrawDebugLine(GetWorld(), TraceStart, TraceEnd, FColor::Yellow, false, 5.0f, 0, 2.0f);
+	
+	if (HitActor)
+	{
+		// 맞은 점 표시
+		DrawDebugSphere(GetWorld(), TraceEnd, 15.0f, 8, FColor::Red, false, 5.0f);
+	}
+	// 추후 Niagara 머즐 플래시, 사운드, 탄피 등 추가
 }

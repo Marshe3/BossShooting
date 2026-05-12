@@ -74,6 +74,13 @@ protected:
 	UFUNCTION(Server, Unreliable)
 	void Server_SetAimRotation(FRotator NewRotation);
 	
+	// 발사 Input Action
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category ="Input")
+	TObjectPtr<UInputAction> FireAction;
+	
+	// 발사 핸들러
+	void OnFirePressed();
+	
 public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
