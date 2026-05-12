@@ -51,30 +51,61 @@ void ABaseWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifet
 
 void ABaseWeapon::AttachToOwner(ABaseCharacter* NewOwner)
 {
-	// 서버에서만 호출되어야 함
-	if (!HasAuthority() || !NewOwner) return;
-	
+	if (!HasAuthority() || !NewOwner)
+	{
+		const TCHAR* OwnerStr = NewOwner ? TEXT("OK") : TEXT("NULL");
+		UE_LOG(LogTemp, Warning, TEXT("[Attach] 진입 실패: HasAuthority=%d, NewOwner=%s"),
+			HasAuthority() ? 1 : 0, OwnerStr);
+		return;
+	}
+
 	OwningCharacter = NewOwner;
 	SetOwner(NewOwner);
-	
-	const FDetachmentTransformRules Rules(EDetachmentRule::KeepWorld, true);
-	DetachFromActor(Rules);
-	
+
+	USkeletalMeshComponent* CharMesh = NewOwner->GetMesh();
+	if (!CharMesh)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Attach] CharMesh NULL — 캐릭터 메쉬가 없음"));
+		return;
+	}
+
+	const FAttachmentTransformRules Rules(EAttachmentRule::SnapToTarget, true);
+	const bool bAttached = AttachToComponent(CharMesh, Rules, AttachSocketName);
+
+	const FVector WeaponLoc = GetActorLocation();
+	const FVector SocketLoc = CharMesh->GetSocketLocation(AttachSocketName);
+	const AActor* AttachParent = GetAttachParentActor();
+	const FString ParentStr = AttachParent ? AttachParent->GetName() : TEXT("NULL");
+
+	UE_LOG(LogTemp, Warning, TEXT("[Attach] Socket=%s, Result=%d, Parent=%s"),
+		*AttachSocketName.ToString(), bAttached ? 1 : 0, *ParentStr);
+
+	UE_LOG(LogTemp, Warning, TEXT("[Attach] WeaponLoc=%s / SocketLoc=%s"),
+		*WeaponLoc.ToString(), *SocketLoc.ToString());
+
 	OnRep_OwningCharacter();
 }
 
 void ABaseWeapon::OnRep_OwningCharacter()
 {
-	// 서버/클라 양쪽에서 호출도미
-	// attach 자체는 bReplicateMovement로 자동 동기화되니까
-	// 여기서는 UI 갱신, 시각 효과 같은 부수 작업
+	// ★ 클라이언트 측에서도 명시적으로 attach 수행
+	//   서버는 AttachToOwner에서 이미 처리했지만, attach 정보의 자동 리플리케이션이
+	//   timing 문제로 누락될 수 있어서 RepNotify에서 보강
+	if (!HasAuthority() && OwningCharacter)
+	{
+		USkeletalMeshComponent* CharMesh = OwningCharacter->GetMesh();
+		if (CharMesh)
+		{
+			const FAttachmentTransformRules Rules(EAttachmentRule::SnapToTarget, true);
+			AttachToComponent(CharMesh, Rules, AttachSocketName);
+		}
+	}
+
 	const TCHAR* RoleStr = HasAuthority() ? TEXT("서버") : TEXT("클라");
 	const FString OwnerName = OwningCharacter ? OwningCharacter->GetName() : TEXT("None");
-
 	UE_LOG(LogTemp, Warning, TEXT("[%s] %s OwningCharacter: %s"),
 		RoleStr, *GetName(), *OwnerName);
 }
-
 void ABaseWeapon::OnRep_CurrentAmmo(int32 OldAmmo)
 {
 	const TCHAR* RoleStr = HasAuthority() ? TEXT("서버") : TEXT("클라");

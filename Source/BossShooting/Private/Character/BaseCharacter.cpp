@@ -109,6 +109,25 @@ void ABaseCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 	
+	// if (HasAuthority() && DefaultWeaponClass)
+	// {
+	// 	FActorSpawnParameters Params;
+	// 	Params.Owner = this;
+	// 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	//
+	// 	// ★ 스폰 위치를 캐릭터 위치로 (attach 실패해도 적어도 가까이 있게)
+	// 	const FVector SpawnLoc = GetActorLocation();
+	// 	const FRotator SpawnRot = GetActorRotation();
+	// 	ABaseWeapon* NewWeapon = GetWorld()->SpawnActor<ABaseWeapon>(
+	// 		DefaultWeaponClass, SpawnLoc, SpawnRot, Params);
+	//
+	// 	if (NewWeapon)
+	// 	{
+	// 		EquipWeapon(NewWeapon);
+	// 	}
+	// }
+	
+	
 	// ★ 로컬 플레이어의 입력 시스템에 IMC 등록
 	// 이 캐릭터를 조종하는 PlayerController가 있을 때만 실행됨
 	// (서버가 시뮬레이션하는 다른 클라의 캐릭터는 PlayerController 없음)
