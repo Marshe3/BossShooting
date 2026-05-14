@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "TimerManager.h"
 #include "AlienBase.generated.h"
 
 UCLASS()
@@ -46,10 +47,36 @@ protected:
 	
 	
 	
-public:
+protected:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Alien|Melee")
+	bool bCanMeleeAttack = true;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Alien|Melee", meta = (EditCondition = "bCanMeleeAttack", ClampMin = "0.0"))
+	float MeleeAttackRange = 120.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Alien|Melee", meta = (EditCondition = "bCanMeleeAttack", ClampMin = "0.0"))
+	float MeleeAttackDamage = 10.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Alien|Melee", meta = (EditCondition = "bCanMeleeAttack", ClampMin = "0.0"))
+	float MeleeAttackCooldown = 1.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Alien|Melee", meta = (EditCondition = "bCanMeleeAttack", ClampMin = "0.05"))
+	float MeleeAttackCheckInterval = 0.2f;
+
+	// 근접 공격은 Tick 대신 서버 타이머로 주기 검사한다.
+	// 모든 프레임이 아니라 일정 간격으로만 range/cooldown을 확인해서 읽기 쉽고 비용도 낮다.
+	FTimerHandle MeleeAttackTimerHandle;
+	float LastMeleeAttackTime = -1000.0f;
+
+	void StartMeleeAttackTimer_ServerOnly();
+	void StopMeleeAttackTimer_ServerOnly();
+	void TryMeleeAttack_ServerOnly();
+
+	class ABaseCharacter* FindClosestMeleeTarget_ServerOnly() const;
 };

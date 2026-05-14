@@ -39,6 +39,11 @@ void AAlienAIController::OnPossess(APawn* InPawn)
 		UseBlackboard(BehaviorTreeAsset->BlackboardAsset, BlackboardComp);
 		//BT 실행
 		RunBehaviorTree(BehaviorTreeAsset);
+		UE_LOG(LogTemp, Warning, TEXT("[AI] %s HasAuthority=%d NetMode=%d"),
+	*GetName(),
+	HasAuthority(),
+	(int32)GetNetMode());
+
 	}
 }
 

@@ -153,7 +153,7 @@ Content/Game/
 - ✅ 호스트/클라이언트 두 화면에서 같은 적 이동 결과가 보임
 - ⚠️ 로그 출력은 확인하지 못했음. 다만 현재 구조상 AIController/BehaviorTree 판단은 서버에서 실행되고, 클라이언트는 `AAlienBase`의 replicated movement 결과를 보는 모델로 판단 가능.
 
-**다음 단계**: Step 6c — BP_WeaponPickup 에셋 생성/튜닝 및 PIE 검증. C++ pickup 기반은 추가됐고, 다음은 BP에서 WeaponClass를 지정해 맵에 배치하는 단계.
+**다음 단계**: Step 7b — `BP_EnemyWaveTrigger` 에셋 생성·튜닝 및 PIE 검증. C++ 웨이브 트리거 기반은 추가됐고, 다음은 BP에서 `EnemyClasses`와 선택적 `SpawnPoints`를 지정해 맵에 배치하는 단계.
 
 ---
 
@@ -366,8 +366,54 @@ Root
   - pickup actor가 모든 화면에서 사라지는지 확인
 
 ### Step 6 이후 남은 작업
-- 잡몹 스피터 (원거리 산성 침)
-- 잡몹 웨이브 트리거
+### Step 7a 진행 중 — 잡몹 스피터 원거리 산성 침 기반
+
+**완료된 코드 작업**:
+- `AAlienSpitter` C++ 클래스 추가.
+- `AAlienSpitter`는 `AAlienBase`를 상속하지만 기본 근접 공격을 끄고 원거리 공격 타이머를 사용.
+- 서버에서만 원거리 공격 타이머 시작.
+- 서버가 범위 안의 가장 가까운 살아있는 `ABaseCharacter`를 찾고, 쿨다운이 끝났으면 `AcidProjectileClass`를 spawn.
+- projectile 이동/충돌/방사 피해는 기존 `ABaseProjectile` 서버 권위 흐름 재사용.
+- `ABaseProjectile::InitProjectile`에 `IgnoredActor`를 추가해 weapon projectile과 enemy projectile 모두 발사자를 무시할 수 있게 보강.
+- `ABaseProjectile::BeginPlay`에서 BP `InitialSpeed` 값을 movement component에 다시 반영하도록 보강.
+- `BossShootingEditor Win64 Development` 빌드 성공.
+
+**남은 BP 셋업/검증**:
+- `BP_AcidProjectile` 생성: 부모 `BaseProjectile`
+- `BP_AlienSpitter` 생성: 부모 `AlienSpitter`
+- `BP_AlienSpitter.AcidProjectileClass`에 `BP_AcidProjectile` 지정
+- `BP_AlienSpitter` AI Controller Class를 임시로 `BP_AlienAIController`로 지정 가능
+- 맵에 배치 후 PIE Listen Server에서:
+  - 서버 로그에 산성 침 발사 로그가 찍히는지
+  - host/remote client 양쪽에서 projectile 이동이 보이는지
+  - 충돌/폭발 디버그 구가 양쪽 화면에 보이는지
+  - 맞은 플레이어 체력이 서버에서 감소하고 복제되는지 확인
+
+### Step 7 이후 남은 작업
+### Step 7b 진행 중 — 잡몹 웨이브 트리거 기반
+
+**완료된 코드 작업**:
+- `AEnemyWaveTrigger` C++ 클래스 추가.
+- `UBoxComponent` overlap으로 플레이어 진입 감지.
+- 서버에서만 overlap callback 바인딩.
+- 살아있는 `ABaseCharacter`가 trigger에 들어오면 서버가 한 번만 wave 시작.
+- `EnemyClasses` 배열에 지정한 적 BP들을 서버에서 spawn.
+- `SpawnPoints` 배열이 있으면 해당 위치 기준, 없으면 trigger actor 위치 기준으로 spawn.
+- `SpawnScatterRadius`로 같은 위치에 적이 겹치지 않게 XY 오프셋 적용.
+- `BossShootingEditor Win64 Development` 빌드 성공.
+
+**남은 BP 셋업/검증**:
+- `BP_EnemyWaveTrigger` 생성: 부모 `EnemyWaveTrigger`
+- `EnemyClasses`에 `BP_AlienRusher`, `BP_AlienSpitter` 등 지정
+- 필요하면 맵에 `TargetPoint`를 배치하고 `SpawnPoints`에 지정
+- TriggerBox 크기를 플레이어가 지나갈 구역에 맞게 조정
+- PIE Listen Server에서 host/remote client가 밟았을 때:
+  - 서버 로그에 wave trigger 시작 로그가 찍히는지
+  - 적들이 서버에서 spawn되는지
+  - host/remote client 양쪽 화면에서 적들이 보이는지
+  - 여러 번 밟아도 한 번만 실행되는지 확인
+
+### Step 8 이후 남은 작업
 - 보스 (외계인 여왕) 3페이즈
 - GameMode/GameState, ServerTravel
 - UMG (메인 메뉴, 로비, 임무 보드, HUD, 보스 체력바)

@@ -545,7 +545,7 @@ flowchart TD
 
 ## 9. 현재 진척 (스냅샷)
 
-**Step 5b까지 완료** (2026년 5월 기준):
+**Step 7b C++ 기반까지 진행** (2026년 5월 기준):
 
 - ✅ Step 1: 프로젝트 셋업 (UE 5.7 Top Down 템플릿, GitHub + Git LFS, `ABaseCharacter` + 탑뷰 카메라, 2인 PIE 리슨서버 스모크 테스트)
 - ✅ Step 2: Health 시스템 (`CurrentHealth`/`MaxHealth` Replicated + `OnRep_Health` 콜백 + 서버 권위 `TakeDamage`)
@@ -559,8 +559,10 @@ flowchart TD
 - 🔄 Step 6a: 샷건용 다발 히트스캔 기반 (`ABaseWeapon`에 `PelletCount`, `SpreadAngleDegrees` 추가, 서버 pellet trace/damage 처리, 배열 기반 multicast debug FX). 빌드 성공, BP_Shotgun 에셋 생성/튜닝 및 PIE 검증 필요.
 - 🔄 Step 6b: 유탄 projectile 기반 (`ABaseProjectile`, `EWeaponFireMode::Projectile`, 서버 projectile spawn, replicated movement, radial damage, multicast explosion debug). 빌드 성공, BP_GrenadeProjectile/BP_GrenadeLauncher 에셋 생성/튜닝 및 PIE 검증 필요.
 - 🔄 Step 6c: 무기 픽업/1슬롯 교체 기반 (`AWeaponPickup`, 서버 overlap claim, `WeaponClass` spawn, `ABaseCharacter::EquipWeapon` 기존 무기 제거 후 새 무기 장착). 빌드 성공, BP_WeaponPickup 에셋 생성/튜닝 및 PIE 검증 필요.
+- 🔄 Step 7a: 스피터 원거리 산성 침 기반 (`AAlienSpitter`, 서버 타이머 기반 target search/cooldown, `AcidProjectileClass` 서버 spawn, 기존 `ABaseProjectile` 재사용). 빌드 성공, BP_AlienSpitter/BP_AcidProjectile 에셋 생성/튜닝 및 PIE 검증 필요.
+- 🔄 Step 7b: 잡몹 웨이브 트리거 기반 (`AEnemyWaveTrigger`, 서버 overlap trigger, `EnemyClasses` 배열 기반 enemy spawn, optional `SpawnPoints`). 빌드 성공, BP_EnemyWaveTrigger 에셋 생성/튜닝 및 PIE 검증 필요.
 
-**다음 작업**: `BP_WeaponPickup` 에셋 생성/튜닝 후 Listen Server host/remote client에서 무기 교체와 pickup 제거 검증
+**다음 작업**: `BP_EnemyWaveTrigger` 에셋 생성·튜닝 후 Listen Server host/remote client에서 서버 wave spawn과 enemy replication 검증
 
 ---
 

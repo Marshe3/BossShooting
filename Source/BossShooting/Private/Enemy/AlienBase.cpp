@@ -5,8 +5,10 @@
 
 #include "Net/UnrealNetwork.h"
 #include "Engine/DamageEvents.h"
+#include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Character/BaseCharacter.h"
 #include "Enemy/AlienAIController.h"
 
 // Sets default values
@@ -45,6 +47,8 @@ void AAlienBase::BeginPlay()
 	if (HasAuthority())
 	{
 		CurrentHealth = MaxHealth;
+		// AI 공격 판단은 서버에서만 시작한다. 클라는 replicated health/movement 결과만 본다.
+		StartMeleeAttackTimer_ServerOnly();
 	}
 }
 
@@ -91,6 +95,8 @@ void AAlienBase::HandleDeath()
 	if (!HasAuthority()) return;
 	
 	UE_LOG(LogTemp, Warning, TEXT("[서버] %s 사망"), *GetName());
+
+	StopMeleeAttackTimer_ServerOnly();
 	
 	// 모든 클라에 사망 연출 전파
 	Multicast_OnDeath();
@@ -129,4 +135,105 @@ void AAlienBase::Multicast_OnDeath_Implementation()
 		MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 		MeshComp->SetSimulatePhysics(true);
 	}
+}
+
+void AAlienBase::StartMeleeAttackTimer_ServerOnly()
+{
+	// BehaviorTree는 이동 타겟을 고르고, 이 타이머는 "이미 가까운 대상에게 데미지"를 담당한다.
+	if (!HasAuthority() || !bCanMeleeAttack || MeleeAttackCheckInterval <= 0.0f)
+	{
+		return;
+	}
+
+	GetWorldTimerManager().SetTimer(
+		MeleeAttackTimerHandle,
+		this,
+		&AAlienBase::TryMeleeAttack_ServerOnly,
+		MeleeAttackCheckInterval,
+		true);
+}
+
+void AAlienBase::StopMeleeAttackTimer_ServerOnly()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(MeleeAttackTimerHandle);
+	}
+}
+
+void AAlienBase::TryMeleeAttack_ServerOnly()
+{
+	// 공격 가능 여부, 타겟 선택, 데미지 적용 모두 서버 권위.
+	if (!HasAuthority() || IsDead())
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const float CurrentTime = World->GetTimeSeconds();
+	if (CurrentTime - LastMeleeAttackTime < MeleeAttackCooldown)
+	{
+		return;
+	}
+
+	ABaseCharacter* Target = FindClosestMeleeTarget_ServerOnly();
+	if (!Target)
+	{
+		return;
+	}
+
+	LastMeleeAttackTime = CurrentTime;
+
+	// 플레이어 체력도 서버에서만 깎인다. 클라는 Character health replication으로 결과를 본다.
+	FDamageEvent DamageEvent;
+	const float ActualDamage = Target->TakeDamage(
+		MeleeAttackDamage,
+		DamageEvent,
+		GetController(),
+		this);
+
+	UE_LOG(LogTemp, Warning, TEXT("[서버] %s 근접 공격 -> %s (요청 %.1f / 적용 %.1f)"),
+		*GetName(), *Target->GetName(), MeleeAttackDamage, ActualDamage);
+}
+
+ABaseCharacter* AAlienBase::FindClosestMeleeTarget_ServerOnly() const
+{
+	// 근접 공격용 타겟 검색. BehaviorTree의 추격 타겟과 별개로, 실제 공격 범위 안의 생존자만 찾는다.
+	if (!HasAuthority())
+	{
+		return nullptr;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+
+	ABaseCharacter* ClosestTarget = nullptr;
+	float ClosestDistanceSq = FMath::Square(MeleeAttackRange);
+	const FVector AlienLocation = GetActorLocation();
+
+	for (TActorIterator<ABaseCharacter> It(World); It; ++It)
+	{
+		ABaseCharacter* Candidate = *It;
+		if (!IsValid(Candidate) || Candidate->IsDead())
+		{
+			continue;
+		}
+
+		const float DistanceSq = FVector::DistSquared2D(AlienLocation, Candidate->GetActorLocation());
+		if (DistanceSq <= ClosestDistanceSq)
+		{
+			ClosestDistanceSq = DistanceSq;
+			ClosestTarget = Candidate;
+		}
+	}
+
+	return ClosestTarget;
 }

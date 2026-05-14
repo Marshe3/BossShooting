@@ -37,6 +37,13 @@ void ABaseProjectile::BeginPlay()
 {
 	Super::BeginPlay();
 
+	if (ProjectileMovement)
+	{
+		// BP에서 InitialSpeed를 바꾼 경우 movement component에도 런타임 값으로 다시 반영한다.
+		ProjectileMovement->InitialSpeed = InitialSpeed;
+		ProjectileMovement->MaxSpeed = InitialSpeed;
+	}
+
 	if (HasAuthority())
 	{
 		// 서버에서만 수명 관리. 서버 actor가 사라지면 클라의 replicated actor도 정리된다.
