@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "TimerManager.h"
 #include "BaseWeapon.generated.h"
 
 class USKeletalMeshComponent;
@@ -31,6 +32,8 @@ public:
 	
 	// 발사 입력
 	void StartFire();
+	
+	void StartReload();
 	
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	
@@ -66,6 +69,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Stats")
 	float FireRate = 0.15f;
 	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Stats", meta = (ClampMin = "0.0"))
+	float ReloadDuration = 1.5f;
+	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Stats")
 	int32 MaxAmmo = 30;
 	
@@ -93,6 +99,13 @@ protected:
 	UPROPERTY(ReplicatedUsing = OnRep_CurrentAmmo, VisibleAnywhere, BlueprintReadOnly, Category = "Weapon|State")
 	int32 CurrentAmmo;
 	
+	// 장전 중 여부 - 서버 권위, 클라는 이 값으로 장전 UI/입력 제한을 맞출 수 있다.
+	UPROPERTY(ReplicatedUsing = OnRep_IsReloading, VisibleAnywhere, BlueprintReadOnly, Category = "Weapon|State")
+	bool bIsReloading = false;
+	
+	UFUNCTION()
+	void OnRep_IsReloading();
+	
 	UFUNCTION()
 	void OnRep_CurrentAmmo(int32 OldAmmo);
 	
@@ -108,6 +121,11 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void Server_Fire(const FVector& AimDirection);
 	
+	UFUNCTION(Server, Reliable)
+	void Server_Reload();
+	
+	void CompleteReload_ServerOnly();
+	
 	// Multicast RPC - 서버가 판정한 발사 결과를 모든 화면에 디버그 FX로 보여준다.
 	// 데미지/탄약 같은 지속 상태 동기화는 Replication이 담당한다.
 	UFUNCTION(NetMulticast, Unreliable)
@@ -122,6 +140,7 @@ protected:
 	// 마지막 발사 시각 (쿨다운용, 서버 권위)
 	float LastFireTime = 0.0f;
 	
+	FTimerHandle ReloadTimerHandle;
 	
 public:
 	// Called every frame

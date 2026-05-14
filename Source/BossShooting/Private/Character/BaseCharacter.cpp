@@ -199,6 +199,12 @@ void ABaseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 		{
 			EIC->BindAction(FireAction, ETriggerEvent::Started, this, &ABaseCharacter::OnFirePressed);
 		}
+		
+		// 장전 - Started: R 키 누른 순간 한번
+		if (ReloadAction)
+		{
+			EIC->BindAction(ReloadAction, ETriggerEvent::Started, this, &ABaseCharacter::OnReloadPressed);
+		}
 	
 	}
 }
@@ -299,3 +305,10 @@ void ABaseCharacter::OnFirePressed()
 	}
 }
 
+void ABaseCharacter::OnReloadPressed()
+{
+	if (CurrentWeapon)
+	{
+		CurrentWeapon->StartReload();
+	}
+}

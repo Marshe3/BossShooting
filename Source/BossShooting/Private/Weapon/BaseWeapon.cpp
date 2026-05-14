@@ -52,6 +52,7 @@ void ABaseWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifet
 	
 	DOREPLIFETIME(ABaseWeapon, CurrentAmmo);
 	DOREPLIFETIME(ABaseWeapon, OwningCharacter);
+	DOREPLIFETIME(ABaseWeapon, bIsReloading);
 }
 
 void ABaseWeapon::AttachToOwner(ABaseCharacter* NewOwner)
@@ -111,6 +112,7 @@ void ABaseWeapon::OnRep_OwningCharacter()
 	UE_LOG(LogTemp, Warning, TEXT("[%s] %s OwningCharacter: %s"),
 		RoleStr, *GetName(), *OwnerName);
 }
+
 void ABaseWeapon::OnRep_CurrentAmmo(int32 OldAmmo)
 {
 	const TCHAR* RoleStr = HasAuthority() ? TEXT("서버") : TEXT("클라");
@@ -121,6 +123,15 @@ void ABaseWeapon::OnRep_CurrentAmmo(int32 OldAmmo)
 		
 }
 
+void ABaseWeapon::OnRep_IsReloading()
+{
+	const TCHAR* RoleStr = HasAuthority() ? TEXT("서버") : TEXT("클라");
+	
+	UE_LOG(LogTemp, Warning, TEXT("[%s] %s 장전 상태: %d"),
+		RoleStr, *GetName(), bIsReloading ? 1 : 0);
+}
+
+
 // Called every frame
 void ABaseWeapon::Tick(float DeltaTime)
 {
@@ -130,6 +141,9 @@ void ABaseWeapon::Tick(float DeltaTime)
 void ABaseWeapon::DetachFromOwner()
 {
 	if (!HasAuthority()) return;
+
+	GetWorldTimerManager().ClearTimer(ReloadTimerHandle);
+	bIsReloading = false;
 
 	OwningCharacter = nullptr;
 	SetOwner(nullptr);
@@ -144,9 +158,17 @@ void ABaseWeapon::StartFire()
 {
 	// 소유 캐릭터가 없으면 발사 불가
 	if (!OwningCharacter) return;
-	
+
 	// 서버에 발사 방향만 요청한다. 실제 TraceStart와 pellet spread는 서버에서 계산한다.
 	Server_Fire(OwningCharacter->GetActorForwardVector());
+}
+
+void ABaseWeapon::StartReload()
+{
+	// 입력은 owning client에서 돌아오지만, 실제 장전 가능 여부와 탄약 변경은 서버가 결정한다.
+	if (!OwningCharacter) return;
+	
+	Server_Reload();
 }
 
 void ABaseWeapon::Server_Fire_Implementation(const FVector& AimDirection)
@@ -157,6 +179,12 @@ void ABaseWeapon::Server_Fire_Implementation(const FVector& AimDirection)
 	if (!OwningCharacter)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[서버] %s 발사 거부: 소유 캐릭터 없음"), *GetName());
+		return;
+	}
+
+	if (bIsReloading)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[서버] %s 발사 거부: 장전 중"), *GetName());
 		return;
 	}
 	
@@ -196,6 +224,75 @@ void ABaseWeapon::Server_Fire_Implementation(const FVector& AimDirection)
 		PerformHitScanFire(TraceStart, SafeAimDirection);
 	}
 }
+
+void ABaseWeapon::Server_Reload_Implementation()
+{
+	if (!OwningCharacter)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[서버] %s 장전 거부: 소유 캐릭터 없음"), *GetName());
+		return;
+	}
+	
+	if (bIsReloading)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[서버] %s 장전 거부: 이미 장전 중"), *GetName());
+		return;
+	}
+	
+	if (CurrentAmmo >= MaxAmmo)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[서버] %s 장전 거부: 이미 탄약 가득 참"), *GetName());
+		return;
+	}
+
+	bIsReloading = true;
+	OnRep_IsReloading(); // 서버는 RepNotify가 자동 호출되지 않으므로 수동 호출
+	
+	const float SafeReloadDuration = FMath::Max(0.0f, ReloadDuration);
+	
+	if (SafeReloadDuration <= 0.0f)
+	{
+		CompleteReload_ServerOnly();
+		return;
+	}
+	
+	GetWorldTimerManager().SetTimer(
+		ReloadTimerHandle,
+		this,
+		&ABaseWeapon::CompleteReload_ServerOnly,
+		SafeReloadDuration,
+		false);
+	
+	UE_LOG(LogTemp, Warning, TEXT("[서버] %s 장전 시작: %.2f초"),
+		*GetName(), SafeReloadDuration);
+}
+
+void ABaseWeapon::CompleteReload_ServerOnly()
+{
+	if  (!HasAuthority())
+	{
+		return;
+	}
+
+	if (!OwningCharacter)
+	{
+		bIsReloading = false;
+		OnRep_IsReloading();
+		return;
+	}
+
+	const int32 OldAmmo = CurrentAmmo;
+	CurrentAmmo = MaxAmmo;
+	OnRep_CurrentAmmo(OldAmmo); // 서버 수동 호출
+	
+	bIsReloading = false;
+	OnRep_IsReloading(); // 서버 수동 호출
+	
+	UE_LOG(LogTemp, Warning,TEXT("[서버] %s 장전 완료: %d -> %d"),
+		*GetName(), OldAmmo, CurrentAmmo);
+}
+
+
 
 void ABaseWeapon::PerformHitScanFire(const FVector& TraceStart, const FVector& AimDirection)
 {

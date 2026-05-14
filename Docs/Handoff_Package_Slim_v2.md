@@ -153,7 +153,7 @@ Content/Game/
 - ✅ 호스트/클라이언트 두 화면에서 같은 적 이동 결과가 보임
 - ⚠️ 로그 출력은 확인하지 못했음. 다만 현재 구조상 AIController/BehaviorTree 판단은 서버에서 실행되고, 클라이언트는 `AAlienBase`의 replicated movement 결과를 보는 모델로 판단 가능.
 
-**다음 단계**: Step 8a — `ABossQueen` 보스 페이즈 상태 기반. 웨이브 트리거는 PIE Listen Server에서 정상 동작 확인됐고, 다음은 보스 체력 구간에 따라 replicated phase가 바뀌는 구조를 만든다.
+**다음 단계**: Step 6d BP 검증 — `IA_Reload` 생성, `IMC_Default` R키 매핑, `BP_BaseCharacter.ReloadAction` 할당 후 Listen Server에서 장전 동작 확인. C++ 장전 기반은 추가됐고 빌드 성공.
 
 ---
 
@@ -366,6 +366,30 @@ Root
   - pickup actor가 모든 화면에서 사라지는지 확인
 
 ### Step 6 이후 남은 작업
+### Step 6d 진행 중 — 무기 장전 기반
+
+**완료된 코드 작업**:
+- `ABaseWeapon`에 `ReloadDuration` 튜닝값 추가.
+- `bIsReloading` replicated state 추가.
+- `StartReload()` 입력 진입점 추가.
+- `Server_Reload` Reliable RPC 추가.
+- 서버가 소유자/이미 장전 중/탄약 가득 참 여부를 검증.
+- 서버 timer 완료 시 `CurrentAmmo = MaxAmmo`로 복구.
+- 장전 중 `Server_Fire`에서 발사 거부.
+- `ABaseCharacter`에 `ReloadAction`, `OnReloadPressed()` 추가.
+- `BossShootingEditor Win64 Development` 빌드 성공.
+
+**남은 BP 셋업/검증**:
+- `IA_Reload` 생성: Value Type Digital/Bool
+- `IMC_Default`에 `IA_Reload`를 R키로 매핑
+- `BP_BaseCharacter.ReloadAction`에 `IA_Reload` 할당
+- PIE Listen Server에서:
+  - 탄약을 소모한 뒤 R키 장전 시작 로그가 찍히는지
+  - 장전 중 발사 요청이 서버에서 거부되는지
+  - 장전 완료 후 `CurrentAmmo`가 `MaxAmmo`로 복구되는지
+  - remote client에서도 같은 결과가 보이는지 확인
+
+### Step 6 이후 남은 작업
 ### Step 7a 진행 중 — 잡몹 스피터 원거리 산성 침 기반
 
 **완료된 코드 작업**:
@@ -412,7 +436,33 @@ Root
 - 여러 번 밟아도 한 번만 실행되는 흐름 확인.
 
 ### Step 8 이후 남은 작업
-- 보스 (외계인 여왕) 3페이즈
+### Step 8a 진행 중 — BossQueen 페이즈 상태 기반
+
+**완료된 코드 작업**:
+- `ABossQueen` C++ 클래스 추가.
+- `AAlienBase` 상속으로 기존 Health/Death replication 흐름 재사용.
+- `EBossQueenPhase` enum 추가: `Phase1`, `Phase2`, `Phase3`, `Dead`.
+- `CurrentPhase`를 `ReplicatedUsing=OnRep_CurrentPhase`로 추가.
+- `bIsInvincible` replicated 상태 추가.
+- HP 60% 이하에서 Phase2, 30% 이하에서 Phase3로 전환.
+- 사망 시 `Dead` phase로 전환.
+- 서버에서 phase 변경 시 `OnRep_CurrentPhase` 수동 호출.
+- `BossShootingEditor Win64 Development` 빌드 성공.
+
+**남은 BP 셋업/검증**:
+- `BP_BossQueen` 생성: 부모 `BossQueen`
+- 맵에 배치
+- PIE Listen Server에서 보스를 공격했을 때:
+  - 서버 로그에 체력 감소가 찍히는지
+  - HP 60% 이하에서 Phase2 로그가 찍히는지
+  - HP 30% 이하에서 Phase3 로그가 찍히는지
+  - 사망 시 Dead phase 로그가 찍히는지
+  - remote client에서도 phase 결과가 동일하게 보이는지 확인
+
+### Step 8 이후 남은 작업
+- 보스 Phase1 공격 패턴
+- 보스 Phase2 소환/무적 루프
+- 보스 Phase3 격노 패턴
 - GameMode/GameState, ServerTravel
 - UMG (메인 메뉴, 로비, 임무 보드, HUD, 보스 체력바)
 - 부활 시스템

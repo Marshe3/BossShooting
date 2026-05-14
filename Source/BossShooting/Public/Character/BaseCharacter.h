@@ -81,6 +81,13 @@ protected:
 	// 발사 핸들러
 	void OnFirePressed();
 	
+	// 장전 Input Action
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputAction> ReloadAction;
+	
+	// 장전 핸들러
+	void OnReloadPressed();
+	
 public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
