@@ -9,6 +9,7 @@
 #include "Engine/DamageEvents.h" //FPointDamageEvent
 #include "DrawDebugHelpers.h" //DrawDebugLine 디버깅용
 #include "EnhancedInputComponent.h"
+#include "Weapon/BaseProjectile.h"
 
 
 // Sets default values
@@ -19,7 +20,7 @@ ABaseWeapon::ABaseWeapon()
 	
 	// === 멀티플레이 기본 ===
 	bReplicates = true;
-	SetReplicateMovement(true); // 무기가 attach되면 zoflrxj EKfk dnawlrdladl ehdrlghk
+	SetReplicateMovement(true); // 무기가 attach되거나 월드에 있을 때 위치/회전 결과를 클라에 보여준다.
 	
 	// === 메쉬 ===
 	WeaponMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("WeaponMesh"));
@@ -144,17 +145,20 @@ void ABaseWeapon::StartFire()
 	// 소유 캐릭터가 없으면 발사 불가
 	if (!OwningCharacter) return;
 	
-	// 발사 시작점/방향 계산 (캐릭터 위치 + 캐릭터 정면 방향)
-	const FVector TraceStart = OwningCharacter->GetActorLocation();
-	const FVector TraceEnd = TraceStart + OwningCharacter->GetActorForwardVector() * Range;
-	
-	// 서버에 발사 요청
-	Server_Fire(TraceStart, TraceEnd);
+	// 서버에 발사 방향만 요청한다. 실제 TraceStart와 pellet spread는 서버에서 계산한다.
+	Server_Fire(OwningCharacter->GetActorForwardVector());
 }
 
-void ABaseWeapon::Server_Fire_Implementation(const FVector& TraceStart, const FVector& TraceEnd)
+void ABaseWeapon::Server_Fire_Implementation(const FVector& AimDirection)
 {
-	// ===권위 검증===
+	// === 서버 권위 검증 ===
+	// 여기서부터는 서버가 발사 가능 여부를 최종 결정한다.
+	// 클라는 방향만 요청했고, 탄약/쿨다운/실제 판정은 신뢰하지 않는다.
+	if (!OwningCharacter)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[서버] %s 발사 거부: 소유 캐릭터 없음"), *GetName());
+		return;
+	}
 	
 	// 발사 쿨다운
 	const float CurrentTime = GetWorld()->GetTimeSeconds();
@@ -167,6 +171,7 @@ void ABaseWeapon::Server_Fire_Implementation(const FVector& TraceStart, const FV
 	if (CurrentAmmo <= 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[서버] %s 발사 거부: 탄약 없음"), *GetName());
+		return;
 	}
 	
 	// 검증 통과 -> 상태 갱신
@@ -175,53 +180,140 @@ void ABaseWeapon::Server_Fire_Implementation(const FVector& TraceStart, const FV
 	CurrentAmmo--;
 	OnRep_CurrentAmmo(OldAmmo); // 서버에서 수동 호출 (RepNotify 패턴)
 	
-	// === 히트스캔 + 데미지 ===
-	PerformLineTrace(TraceStart, TraceEnd);
+	// 클라가 보낸 방향이 0이면 서버가 알고 있는 캐릭터 정면으로 보정한다.
+	const FVector SafeAimDirection = AimDirection.IsNearlyZero()
+		? OwningCharacter->GetActorForwardVector()
+		: AimDirection.GetSafeNormal();
+
+	// 같은 Server_Fire 요청을 쓰되, 무기 BP의 FireMode에 따라 서버 판정 방식만 갈라진다.
+	if (FireMode == EWeaponFireMode::Projectile)
+	{
+		SpawnProjectile_ServerOnly(SafeAimDirection);
+	}
+	else
+	{
+		const FVector TraceStart = OwningCharacter->GetActorLocation();
+		PerformHitScanFire(TraceStart, SafeAimDirection);
+	}
 }
 
-void ABaseWeapon::PerformLineTrace(const FVector& TraceStart, const FVector& TraceEnd)
+void ABaseWeapon::PerformHitScanFire(const FVector& TraceStart, const FVector& AimDirection)
 {
-	FHitResult Hit;
+	// HitScan은 서버가 즉시 trace를 쏘고, 맞은 Actor에게 바로 TakeDamage를 호출한다.
+	// Shotgun도 같은 함수에서 pellet 개수와 spread만 늘려 처리한다.
 	FCollisionQueryParams Params;
 	Params.AddIgnoredActor(this); // 무기 자기 자신 무시
 	Params.AddIgnoredActor(OwningCharacter); // 쏘는 사람 무시
 	Params.bTraceComplex = false; // 단순 콜리전만 (성능)
-	
-	const bool bHit = GetWorld() -> LineTraceSingleByChannel(
-		Hit,TraceStart, TraceEnd, ECC_Pawn, Params);
-	
-	AActor* HitActor = nullptr;
-	
-	if (bHit && Hit.GetActor())
+
+	const int32 SafePelletCount = FMath::Max(1, PelletCount);
+	const float SpreadRadians = FMath::DegreesToRadians(FMath::Max(0.0f, SpreadAngleDegrees));
+	TArray<FVector> TraceEnds;
+	TArray<AActor*> HitActors;
+	TraceEnds.Reserve(SafePelletCount);
+	HitActors.Reserve(SafePelletCount);
+
+	for (int32 PelletIndex = 0; PelletIndex < SafePelletCount; ++PelletIndex)
 	{
-		HitActor = Hit.GetActor();
+		// spread 랜덤도 서버에서 만든다. 클라가 pellet 방향을 정하면 hit 조작 여지가 생긴다.
+		const FVector PelletDirection = (SafePelletCount > 1 && SpreadRadians > 0.0f)
+			? FMath::VRandCone(AimDirection, SpreadRadians)
+			: AimDirection;
+		const FVector TraceEnd = TraceStart + PelletDirection * Range;
 		
-		// 데미지 적용(서버 권위)
-		FPointDamageEvent DmgEvent(Damage, Hit, (TraceEnd - TraceStart).GetSafeNormal(), nullptr);
-		HitActor -> TakeDamage(
-			Damage,
-			DmgEvent,
-			OwningCharacter ? OwningCharacter->GetController() : nullptr, this);
+		FHitResult Hit;
+		const bool bHit = GetWorld()->LineTraceSingleByChannel(
+			Hit, TraceStart, TraceEnd, ECC_Pawn, Params);
+
+		AActor* HitActor = nullptr;
+		const FVector FXEnd = bHit ? Hit.ImpactPoint : TraceEnd;
 		
-		UE_LOG(LogTemp, Warning, TEXT("[서버] %s 히트: %s (데미지 %.1f)"),
-			*GetName(), *HitActor->GetName(), Damage);
+		if (bHit && Hit.GetActor())
+		{
+			HitActor = Hit.GetActor();
+			
+			// 데미지 적용(서버 권위)
+			FPointDamageEvent DmgEvent(Damage, Hit, PelletDirection, nullptr);
+			HitActor->TakeDamage(
+				Damage,
+				DmgEvent,
+				OwningCharacter ? OwningCharacter->GetController() : nullptr,
+				this);
+			
+			UE_LOG(LogTemp, Warning, TEXT("[서버] %s 히트: %s (펠릿 %d/%d, 데미지 %.1f)"),
+				*GetName(), *HitActor->GetName(), PelletIndex + 1, SafePelletCount, Damage);
+		}
+
+		TraceEnds.Add(FXEnd);
+		HitActors.Add(HitActor);
 	}
 	
 	// === 전체 클라에 이펙트 전파 ===
-	// bHit이면 실제 충돌 위치까지, 아니면 끝점까지 라인 그림
-	const FVector FXEnd = bHit ? Hit.ImpactPoint : TraceEnd;
-	Multicast_PlayFireFX(TraceStart, FXEnd, HitActor);
+	Multicast_PlayFireFX(TraceStart, TraceEnds, HitActors);
 }
 
-void ABaseWeapon::Multicast_PlayFireFX_Implementation(const FVector& TraceStart, const FVector& TraceEnd, AActor* HitActor)
+void ABaseWeapon::SpawnProjectile_ServerOnly(const FVector& AimDirection)
 {
-	// 디버그 라인 - 5초간 보임
-	DrawDebugLine(GetWorld(), TraceStart, TraceEnd, FColor::Yellow, false, 5.0f, 0, 2.0f);
-	
-	if (HitActor)
+	// Projectile은 Actor로 존재하므로 반드시 서버에서 spawn해야 한다.
+	// 클라이언트는 replicated movement로 날아가는 결과를 본다.
+	if (!HasAuthority() || !OwningCharacter)
 	{
-		// 맞은 점 표시
-		DrawDebugSphere(GetWorld(), TraceEnd, 15.0f, 8, FColor::Red, false, 5.0f);
+		return;
+	}
+
+	if (!ProjectileClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[서버] %s 발사 거부: ProjectileClass 없음"), *GetName());
+		return;
+	}
+
+	const FVector SafeAimDirection = AimDirection.IsNearlyZero()
+		? OwningCharacter->GetActorForwardVector()
+		: AimDirection.GetSafeNormal();
+	const FVector SpawnLocation = OwningCharacter->GetActorLocation() + SafeAimDirection * ProjectileSpawnForwardOffset;
+	const FRotator SpawnRotation = SafeAimDirection.Rotation();
+
+	FActorSpawnParameters Params;
+	Params.Owner = this;
+	Params.Instigator = OwningCharacter;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	ABaseProjectile* Projectile = GetWorld()->SpawnActor<ABaseProjectile>(
+		ProjectileClass,
+		SpawnLocation,
+		SpawnRotation,
+		Params);
+
+	if (!Projectile)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[서버] %s 발사 실패: Projectile spawn 실패"), *GetName());
+		return;
+	}
+
+	// spawn 직후 발사 방향/instigator/damage causer를 넘겨 projectile 쪽 서버 판정에 사용한다.
+	Projectile->InitProjectile(SafeAimDirection, OwningCharacter->GetController(), this, OwningCharacter);
+
+	UE_LOG(LogTemp, Warning, TEXT("[서버] %s 프로젝타일 발사: %s"),
+		*GetName(), *Projectile->GetName());
+}
+
+void ABaseWeapon::Multicast_PlayFireFX_Implementation(const FVector& TraceStart, const TArray<FVector>& TraceEnds, const TArray<AActor*>& HitActors)
+{
+	// 모든 클라(서버 포함)에서 실행되는 시각화용 RPC.
+	// 맞았는지/데미지가 얼마인지는 이미 서버가 결정했고, 여기서는 debug line만 그린다.
+	for (int32 Index = 0; Index < TraceEnds.Num(); ++Index)
+	{
+		const FVector& TraceEnd = TraceEnds[Index];
+		AActor* HitActor = HitActors.IsValidIndex(Index) ? HitActors[Index] : nullptr;
+
+		// 디버그 라인 - 5초간 보임
+		DrawDebugLine(GetWorld(), TraceStart, TraceEnd, FColor::Yellow, false, 5.0f, 0, 2.0f);
+	
+		if (HitActor)
+		{
+			// 맞은 점 표시
+			DrawDebugSphere(GetWorld(), TraceEnd, 15.0f, 8, FColor::Red, false, 5.0f);
+		}
 	}
 	// 추후 Niagara 머즐 플래시, 사운드, 탄피 등 추가
 }

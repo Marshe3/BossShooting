@@ -261,14 +261,17 @@ void ABaseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	
 	}
 
-	void ABaseCharacter::EquipWeapon(ABaseWeapon* NewWeapon)
-	{
-		if (!HasAuthority() || !NewWeapon) return;
-	
-		// 기존 무기 해제
-		if (CurrentWeapon)
-		{
-			CurrentWeapon->DetachFromOwner();
+ 	void ABaseCharacter::EquipWeapon(ABaseWeapon* NewWeapon)
+ 	{
+		// 무기 장착/교체는 서버 권위. 클라는 CurrentWeapon replication과 weapon attach 보강으로 결과를 본다.
+ 		if (!HasAuthority() || !NewWeapon) return;
+ 	
+ 		// 현재 프로젝트는 1슬롯 무기 모델이라 pickup 시 기존 무기를 월드에 드롭하지 않고 제거한다.
+ 		if (CurrentWeapon)
+ 		{
+ 			ABaseWeapon* OldWeapon = CurrentWeapon;
+			OldWeapon->DetachFromOwner();
+			OldWeapon->Destroy();
 		}
 	
 		CurrentWeapon = NewWeapon;

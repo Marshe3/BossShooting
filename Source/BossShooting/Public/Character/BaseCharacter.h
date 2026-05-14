@@ -91,6 +91,9 @@ public:
 	// ★ 데미지 처리 — Engine 가상 함수 오버라이드 (서버 권위)
 	virtual float TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
 
+	UFUNCTION(BlueprintPure, Category = "Character|State")
+	bool IsDead() const { return CurrentHealth <= 0.0f; }
+
 	// ★ 디버그 — 콘솔에서 자기 자신에게 데미지
 	UFUNCTION(Exec, BlueprintCallable, Category = "Debug")
 	void DebugSelfDamage(float Amount);
