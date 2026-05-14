@@ -560,9 +560,9 @@ flowchart TD
 - 🔄 Step 6b: 유탄 projectile 기반 (`ABaseProjectile`, `EWeaponFireMode::Projectile`, 서버 projectile spawn, replicated movement, radial damage, multicast explosion debug). 빌드 성공, BP_GrenadeProjectile/BP_GrenadeLauncher 에셋 생성/튜닝 및 PIE 검증 필요.
 - 🔄 Step 6c: 무기 픽업/1슬롯 교체 기반 (`AWeaponPickup`, 서버 overlap claim, `WeaponClass` spawn, `ABaseCharacter::EquipWeapon` 기존 무기 제거 후 새 무기 장착). 빌드 성공, BP_WeaponPickup 에셋 생성/튜닝 및 PIE 검증 필요.
 - 🔄 Step 7a: 스피터 원거리 산성 침 기반 (`AAlienSpitter`, 서버 타이머 기반 target search/cooldown, `AcidProjectileClass` 서버 spawn, 기존 `ABaseProjectile` 재사용). 빌드 성공, BP_AlienSpitter/BP_AcidProjectile 에셋 생성/튜닝 및 PIE 검증 필요.
-- 🔄 Step 7b: 잡몹 웨이브 트리거 기반 (`AEnemyWaveTrigger`, 서버 overlap trigger, `EnemyClasses` 배열 기반 enemy spawn, optional `SpawnPoints`). 빌드 성공, BP_EnemyWaveTrigger 에셋 생성/튜닝 및 PIE 검증 필요.
+- ✅ Step 7b: 잡몹 웨이브 트리거 기반 (`AEnemyWaveTrigger`, 서버 overlap trigger, `EnemyClasses` 배열 기반 enemy spawn, optional `SpawnPoints`). PIE Listen Server에서 정상 동작 확인.
 
-**다음 작업**: `BP_EnemyWaveTrigger` 에셋 생성·튜닝 후 Listen Server host/remote client에서 서버 wave spawn과 enemy replication 검증
+**다음 작업**: `ABossQueen` 보스 페이즈 상태 기반 구현. HP 구간에 따라 replicated phase가 바뀌고 host/remote client에서 같은 phase 결과를 보도록 검증
 
 ---
 

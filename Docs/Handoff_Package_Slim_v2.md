@@ -153,7 +153,7 @@ Content/Game/
 - ✅ 호스트/클라이언트 두 화면에서 같은 적 이동 결과가 보임
 - ⚠️ 로그 출력은 확인하지 못했음. 다만 현재 구조상 AIController/BehaviorTree 판단은 서버에서 실행되고, 클라이언트는 `AAlienBase`의 replicated movement 결과를 보는 모델로 판단 가능.
 
-**다음 단계**: Step 7b — `BP_EnemyWaveTrigger` 에셋 생성·튜닝 및 PIE 검증. C++ 웨이브 트리거 기반은 추가됐고, 다음은 BP에서 `EnemyClasses`와 선택적 `SpawnPoints`를 지정해 맵에 배치하는 단계.
+**다음 단계**: Step 8a — `ABossQueen` 보스 페이즈 상태 기반. 웨이브 트리거는 PIE Listen Server에서 정상 동작 확인됐고, 다음은 보스 체력 구간에 따라 replicated phase가 바뀌는 구조를 만든다.
 
 ---
 
@@ -390,7 +390,7 @@ Root
   - 맞은 플레이어 체력이 서버에서 감소하고 복제되는지 확인
 
 ### Step 7 이후 남은 작업
-### Step 7b 진행 중 — 잡몹 웨이브 트리거 기반
+### Step 7b 완료 — 잡몹 웨이브 트리거 기반
 
 **완료된 코드 작업**:
 - `AEnemyWaveTrigger` C++ 클래스 추가.
@@ -402,16 +402,14 @@ Root
 - `SpawnScatterRadius`로 같은 위치에 적이 겹치지 않게 XY 오프셋 적용.
 - `BossShootingEditor Win64 Development` 빌드 성공.
 
-**남은 BP 셋업/검증**:
+**BP 셋업/검증 결과**:
 - `BP_EnemyWaveTrigger` 생성: 부모 `EnemyWaveTrigger`
 - `EnemyClasses`에 `BP_AlienRusher`, `BP_AlienSpitter` 등 지정
 - 필요하면 맵에 `TargetPoint`를 배치하고 `SpawnPoints`에 지정
 - TriggerBox 크기를 플레이어가 지나갈 구역에 맞게 조정
-- PIE Listen Server에서 host/remote client가 밟았을 때:
-  - 서버 로그에 wave trigger 시작 로그가 찍히는지
-  - 적들이 서버에서 spawn되는지
-  - host/remote client 양쪽 화면에서 적들이 보이는지
-  - 여러 번 밟아도 한 번만 실행되는지 확인
+- PIE Listen Server에서 정상 동작 확인.
+- 플레이어가 trigger를 밟으면 서버에서 적들이 spawn되고, host/remote client 양쪽 화면에서 보임.
+- 여러 번 밟아도 한 번만 실행되는 흐름 확인.
 
 ### Step 8 이후 남은 작업
 - 보스 (외계인 여왕) 3페이즈
