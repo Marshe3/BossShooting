@@ -153,7 +153,7 @@ Content/Game/
 - ✅ 호스트/클라이언트 두 화면에서 같은 적 이동 결과가 보임
 - ⚠️ 로그 출력은 확인하지 못했음. 다만 현재 구조상 AIController/BehaviorTree 판단은 서버에서 실행되고, 클라이언트는 `AAlienBase`의 replicated movement 결과를 보는 모델로 판단 가능.
 
-**다음 단계**: Step 6d BP 검증 — `IA_Reload` 생성, `IMC_Default` R키 매핑, `BP_BaseCharacter.ReloadAction` 할당 후 Listen Server에서 장전 동작 확인. C++ 장전 기반은 추가됐고 빌드 성공.
+**다음 단계**: Step 8d BP 검증 — Phase2 소환몹 정리 후 보스를 HP 30% 이하로 깎아 Phase3 진입, 이동 속도 증가/공격 주기 단축/강화된 melee/projectile 패턴을 Listen Server에서 확인. C++ 기반은 추가됐고 빌드 성공.
 
 ---
 
@@ -366,7 +366,7 @@ Root
   - pickup actor가 모든 화면에서 사라지는지 확인
 
 ### Step 6 이후 남은 작업
-### Step 6d 진행 중 — 무기 장전 기반
+### Step 6d 완료 — 무기 장전 기반
 
 **완료된 코드 작업**:
 - `ABaseWeapon`에 `ReloadDuration` 튜닝값 추가.
@@ -379,15 +379,13 @@ Root
 - `ABaseCharacter`에 `ReloadAction`, `OnReloadPressed()` 추가.
 - `BossShootingEditor Win64 Development` 빌드 성공.
 
-**남은 BP 셋업/검증**:
+**BP 셋업/검증 결과**:
 - `IA_Reload` 생성: Value Type Digital/Bool
 - `IMC_Default`에 `IA_Reload`를 R키로 매핑
 - `BP_BaseCharacter.ReloadAction`에 `IA_Reload` 할당
-- PIE Listen Server에서:
-  - 탄약을 소모한 뒤 R키 장전 시작 로그가 찍히는지
-  - 장전 중 발사 요청이 서버에서 거부되는지
-  - 장전 완료 후 `CurrentAmmo`가 `MaxAmmo`로 복구되는지
-  - remote client에서도 같은 결과가 보이는지 확인
+- `IA_Reload` / `IMC_Default` / `BP_BaseCharacter.ReloadAction` 셋업 완료.
+- PIE Listen Server에서 장전 동작이 정상 적용되는 것을 확인.
+- 장전 중 발사 거부, 장전 완료 후 `CurrentAmmo` 복구 흐름은 C++ 서버 권위 로직으로 처리됨.
 
 ### Step 6 이후 남은 작업
 ### Step 7a 진행 중 — 잡몹 스피터 원거리 산성 침 기반
@@ -436,7 +434,7 @@ Root
 - 여러 번 밟아도 한 번만 실행되는 흐름 확인.
 
 ### Step 8 이후 남은 작업
-### Step 8a 진행 중 — BossQueen 페이즈 상태 기반
+### Step 8a 완료 — BossQueen 페이즈 상태 기반
 
 **완료된 코드 작업**:
 - `ABossQueen` C++ 클래스 추가.
@@ -449,19 +447,60 @@ Root
 - 서버에서 phase 변경 시 `OnRep_CurrentPhase` 수동 호출.
 - `BossShootingEditor Win64 Development` 빌드 성공.
 
-**남은 BP 셋업/검증**:
+**BP 셋업/검증 결과**:
 - `BP_BossQueen` 생성: 부모 `BossQueen`
-- 맵에 배치
-- PIE Listen Server에서 보스를 공격했을 때:
-  - 서버 로그에 체력 감소가 찍히는지
-  - HP 60% 이하에서 Phase2 로그가 찍히는지
-  - HP 30% 이하에서 Phase3 로그가 찍히는지
-  - 사망 시 Dead phase 로그가 찍히는지
-  - remote client에서도 phase 결과가 동일하게 보이는지 확인
+- 맵에 배치 완료.
+- PIE Listen Server에서 보스를 공격했을 때 HP 60%/30%/사망 페이즈 전환이 정상 동작하는 것을 확인.
+- host/remote client 양쪽에서 같은 결과가 보이는 것을 확인.
 
 ### Step 8 이후 남은 작업
-- 보스 Phase1 공격 패턴
-- 보스 Phase2 소환/무적 루프
+### Step 8b 완료 — BossQueen Phase1 공격 패턴
+
+**완료된 코드 작업**:
+- `ABossQueen`에 Phase1 공격 타이머 추가.
+- Phase1에서만 서버 공격 타이머가 돌고, Phase2/Phase3/Dead로 전환되면 타이머를 정지.
+- 서버가 가장 가까운 살아있는 플레이어를 찾음.
+- 가까운 대상은 전방 부채꼴 근접 휘두르기로 서버 데미지 적용.
+- 먼 대상은 `Phase1ProjectileClass`를 서버에서 3방향으로 spawn.
+- projectile 이동/폭발은 기존 `ABaseProjectile`의 replicated movement / multicast debug FX 흐름 재사용.
+- `BossShootingEditor Win64 Development` 빌드 성공.
+
+**BP 셋업/검증 결과**:
+- `BP_BossQueen.Phase1ProjectileClass`에 `BP_AcidProjectile` 또는 보스용 projectile BP 지정.
+- Listen Server PIE에서 Phase1 근접 휘두르기 반복 동작 확인.
+- 보스가 공격 직전 서버에서 타겟을 바라보도록 수정하여 부채꼴 판정이 안정적으로 반복되도록 보완.
+- 원거리 3방향 projectile 발사 및 replicated projectile 흐름 확인.
+- host/remote client 양쪽에서 공격 결과가 동일하게 보이는 것을 확인.
+
+### Step 8 이후 남은 작업
+- BossQueen Phase2 무적 + 소환 루프
+- BossQueen Phase3 격노 패턴
+- 보스 체력바 HUD
+
+### Step 8c 완료 — BossQueen Phase2 무적 + 소환 루프
+
+**완료된 코드 작업**:
+- Phase2 진입 시 `bIsInvincible = true`로 보스를 무적 상태로 전환.
+- Phase2 진입 처리가 중복 실행되지 않도록 `bPhase2SummonsStarted` 추가.
+- `Phase2SummonClasses` 배열에서 소환할 적 클래스를 골라 서버에서 spawn.
+- 소환된 적들을 `Phase2SpawnedMinions`에 보관.
+- 서버 타이머로 소환몹 생존 여부를 반복 확인.
+- 소환몹이 모두 죽거나 사라지면 `bIsInvincible = false`로 무적 해제.
+- 보스 사망 시 Phase1 공격 타이머와 Phase2 체크 타이머 정리.
+- `BossShootingEditor Win64 Development` 빌드 성공.
+
+**BP 셋업/검증 결과**:
+- `BP_BossQueen.Phase2SummonClasses`에 `BP_AlienRusher`, `BP_AlienSpitter` 등 소환할 적 BP 지정.
+- `Phase2SummonCount`, `Phase2SummonRadius`, `Phase2MinionCheckInterval` 튜닝.
+- Listen Server PIE에서 HP 60% 이하 Phase2 진입 확인.
+- Phase2 동안 보스가 데미지를 무시하는 것 확인.
+- Phase2 소환몹이 host/remote client 양쪽에 보이는 것 확인.
+- 소환몹을 모두 처치하면 보스 무적이 해제되는 것 확인.
+- 무적 해제 후 보스가 다시 데미지를 받는 것 확인.
+
+### Step 8 이후 남은 작업
+- BossQueen Phase3 격노 패턴
+- 보스 체력바 HUD
 - 보스 Phase3 격노 패턴
 - GameMode/GameState, ServerTravel
 - UMG (메인 메뉴, 로비, 임무 보드, HUD, 보스 체력바)

@@ -545,7 +545,7 @@ flowchart TD
 
 ## 9. 현재 진척 (스냅샷)
 
-**Step 8a C++ 기반까지 진행** (2026년 5월 기준):
+**Step 8a BP 검증까지 진행** (2026년 5월 기준):
 
 - ✅ Step 1: 프로젝트 셋업 (UE 5.7 Top Down 템플릿, GitHub + Git LFS, `ABaseCharacter` + 탑뷰 카메라, 2인 PIE 리슨서버 스모크 테스트)
 - ✅ Step 2: Health 시스템 (`CurrentHealth`/`MaxHealth` Replicated + `OnRep_Health` 콜백 + 서버 권위 `TakeDamage`)
@@ -559,12 +559,15 @@ flowchart TD
 - 🔄 Step 6a: 샷건용 다발 히트스캔 기반 (`ABaseWeapon`에 `PelletCount`, `SpreadAngleDegrees` 추가, 서버 pellet trace/damage 처리, 배열 기반 multicast debug FX). 빌드 성공, BP_Shotgun 에셋 생성/튜닝 및 PIE 검증 필요.
 - 🔄 Step 6b: 유탄 projectile 기반 (`ABaseProjectile`, `EWeaponFireMode::Projectile`, 서버 projectile spawn, replicated movement, radial damage, multicast explosion debug). 빌드 성공, BP_GrenadeProjectile/BP_GrenadeLauncher 에셋 생성/튜닝 및 PIE 검증 필요.
 - 🔄 Step 6c: 무기 픽업/1슬롯 교체 기반 (`AWeaponPickup`, 서버 overlap claim, `WeaponClass` spawn, `ABaseCharacter::EquipWeapon` 기존 무기 제거 후 새 무기 장착). 빌드 성공, BP_WeaponPickup 에셋 생성/튜닝 및 PIE 검증 필요.
-- 🔄 Step 6d: 무기 장전 기반 (`ReloadDuration`, `bIsReloading` replication, `Server_Reload`, 서버 timer 기반 ammo refill, `ReloadAction`). 빌드 성공, IA_Reload/IMC/BP_BaseCharacter 입력 셋업 및 PIE 검증 필요.
+- ✅ Step 6d: 무기 장전 기반 (`ReloadDuration`, `bIsReloading` replication, `Server_Reload`, 서버 timer 기반 ammo refill, `ReloadAction`). IA_Reload/IMC/BP_BaseCharacter 입력 셋업 후 PIE Listen Server에서 정상 동작 확인.
 - 🔄 Step 7a: 스피터 원거리 산성 침 기반 (`AAlienSpitter`, 서버 타이머 기반 target search/cooldown, `AcidProjectileClass` 서버 spawn, 기존 `ABaseProjectile` 재사용). 빌드 성공, BP_AlienSpitter/BP_AcidProjectile 에셋 생성/튜닝 및 PIE 검증 필요.
 - ✅ Step 7b: 잡몹 웨이브 트리거 기반 (`AEnemyWaveTrigger`, 서버 overlap trigger, `EnemyClasses` 배열 기반 enemy spawn, optional `SpawnPoints`). PIE Listen Server에서 정상 동작 확인.
-- 🔄 Step 8a: 보스 페이즈 상태 기반 (`ABossQueen`, `EBossQueenPhase`, `CurrentPhase` RepNotify, `bIsInvincible` replication, HP ratio 기반 Phase2/Phase3/Dead 전환). 빌드 성공, BP_BossQueen 에셋 생성/튜닝 및 PIE 검증 필요.
+- ✅ Step 8a: 보스 페이즈 상태 기반 (`ABossQueen`, `EBossQueenPhase`, `CurrentPhase` RepNotify, `bIsInvincible` replication, HP ratio 기반 Phase2/Phase3/Dead 전환). BP_BossQueen 생성/배치 후 PIE Listen Server에서 정상 동작 확인.
+- ✅ Step 8b: 보스 Phase1 공격 패턴 기반 (`ABossQueen` 서버 공격 타이머, 가까우면 부채꼴 melee damage, 멀면 `Phase1ProjectileClass` 3방향 서버 spawn). Listen Server PIE에서 정상 동작 확인.
+- ✅ Step 8c: 보스 Phase2 무적 + 소환 루프 기반 (`bIsInvincible`, `Phase2SummonClasses`, 서버 enemy spawn, 소환몹 생존 체크 타이머, 소환몹 정리 후 무적 해제). Listen Server PIE에서 정상 동작 확인.
+- 🔄 Step 8d: 보스 Phase3 격노 패턴 기반 (`Phase3WalkSpeed`, 빠른 공격 타이머, 강화 melee, 다발 projectile 탄막). 빌드 성공, BP_BossQueen Phase3 Rage 튜닝 및 PIE 검증 필요.
 
-**다음 작업**: `IA_Reload` / `IMC_Default` / `BP_BaseCharacter.ReloadAction` 셋업 후 Listen Server host/remote client에서 장전 상태와 탄약 복제 검증
+**다음 작업**: `BP_BossQueen` Phase3 Rage 값 튜닝 후 Listen Server host/remote client에서 Phase3 이동 속도/공격 주기/탄막 검증.
 
 ---
 

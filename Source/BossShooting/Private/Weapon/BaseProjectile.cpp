@@ -133,8 +133,20 @@ void ABaseProjectile::Explode_ServerOnly(const FVector& ExplosionLocation)
 	UE_LOG(LogTemp, Warning, TEXT("[서버] %s 폭발: 위치=%s 데미지=%.1f 반경=%.1f"),
 		*GetName(), *ExplosionLocation.ToString(), Damage, DamageRadius);
 
+	if (CollisionComponent)
+	{
+		CollisionComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
+	
+	if (ProjectileMovement)
+	{
+		ProjectileMovement->StopMovementImmediately();
+	}
+	
 	Multicast_Explode(ExplosionLocation);
-	Destroy();
+	
+	// multicast 폭발 연출이 리모트 클라에 도탁할 시간을 조금 남기고 제거한다.
+	SetLifeSpan(0.2f);
 }
 
 void ABaseProjectile::Multicast_Explode_Implementation(FVector_NetQuantize ExplosionLocation)

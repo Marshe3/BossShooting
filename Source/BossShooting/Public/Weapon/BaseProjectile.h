@@ -45,7 +45,7 @@ protected:
 	void OnProjectileHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
 	// 폭발 위치/반경 디버그 FX만 전체 클라에 뿌린다. 실제 radial damage는 서버에서 이미 처리한다.
-	UFUNCTION(NetMulticast, Unreliable)
+	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_Explode(FVector_NetQuantize ExplosionLocation);
 
 private:
